@@ -7,7 +7,7 @@
 //
 
 import UIKit
-import Kingfisher
+import SDWebImage
 
 // MARK: - PhotoBrowserDelegate
 public protocol PhotoBrowserDelegate {
@@ -269,17 +269,7 @@ extension PhotoBrowser: UICollectionViewDataSource {
         if let url = photoBrowserDelegate.photoBrowser(self, highQualityUrlStringForIndex: index) {
             // 取高清图缓存
             var cacheImage: UIImage?
-            let result = KingfisherManager.shared.cache.isImageCached(forKey: url.cacheKey)
-            if result.cached, let cacheType = result.cacheType {
-                switch cacheType {
-                case .memory:
-                    cacheImage = KingfisherManager.shared.cache.retrieveImageInMemoryCache(forKey: url.cacheKey)
-                case .disk:
-                    cacheImage = KingfisherManager.shared.cache.retrieveImageInDiskCache(forKey: url.cacheKey)
-                default:
-                    cacheImage = nil
-                }
-            }
+            cacheImage = SDWebImageManager.shared().imageCache?.imageFromCache(forKey: SDWebImageManager.shared().cacheKey(for: url))
             if cacheImage != nil {
                 return (cacheImage!, url)
             }

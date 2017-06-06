@@ -7,7 +7,7 @@
 //
 
 import UIKit
-import Kingfisher
+import SDWebImage
 import JXPhotoBrowser
 
 class MomentsViewController: UIViewController {
@@ -92,7 +92,7 @@ extension MomentsViewController: UICollectionViewDataSource {
     
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: MomentsPhotoCollectionViewCell.defalutId, for: indexPath) as! MomentsPhotoCollectionViewCell
-        cell.imageView.kf.setImage(with: URL(string: thumbnailImageUrls[indexPath.row]))
+        cell.imageView.sd_setImage(with: URL(string: thumbnailImageUrls[indexPath.row]))
         return cell
     }
 }

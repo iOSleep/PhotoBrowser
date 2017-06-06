@@ -7,7 +7,7 @@
 //
 
 import UIKit
-import Kingfisher
+
 
 protocol PhotoBrowserCellDelegate: NSObjectProtocol {
     /// 单击时回调
@@ -138,14 +138,14 @@ public class PhotoBrowserCell: UICollectionViewCell {
         }
         self.progressView.isHidden = false
         weak var weakSelf = self
-        imageView.kf.setImage(with: url, placeholder: image, options: nil, progressBlock: { (receivedSize, totalSize) in
+        imageView.sd_setImage(with: url, placeholderImage: image, progress: { (receivedSize, totalSize, _) in
             if totalSize > 0 {
                 weakSelf?.progressView.progress = CGFloat(receivedSize) / CGFloat(totalSize)
             }
-        }, completionHandler: { (image, error, cacheType, url) in
+        }) { (image, error, cacheType, url) in
             weakSelf?.progressView.isHidden = true
             weakSelf?.doLayout()
-        })
+        }
         self.doLayout()
     }
     
