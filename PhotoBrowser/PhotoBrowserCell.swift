@@ -7,7 +7,7 @@
 //
 
 import UIKit
-
+import SDWebImage
 
 protocol PhotoBrowserCellDelegate: NSObjectProtocol {
     /// 单击时回调
@@ -25,8 +25,11 @@ public class PhotoBrowserCell: UICollectionViewCell {
     /// 代理
     weak var photoBrowserCellDelegate: PhotoBrowserCellDelegate?
     
-    /// 图像加载视图
+    /// 显示图像
     public let imageView = UIImageView()
+    
+    /// 原图url
+    public var rawUrl: URL?
     
     /// 捏合手势放大图片时的最大允许比例
     public var imageMaximumZoomScale: CGFloat = 2.0 {
@@ -46,6 +49,22 @@ public class PhotoBrowserCell: UICollectionViewCell {
     
     /// 加载进度指示器
     fileprivate let progressView = PhotoBrowserProgressView()
+    
+    /// 查看原图按钮
+    private lazy var rawImageButton: UIButton = { [unowned self] in
+        let button = UIButton(type: .custom)
+        button.setTitleColor(UIColor.white, for: .normal)
+        button.setTitleColor(UIColor.white, for: .highlighted)
+        button.setTitle("查看原图", for: .normal)
+        button.setTitle("查看原图", for: .highlighted)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 12)
+        button.layer.borderColor = UIColor.lightGray.cgColor
+        button.layer.borderWidth = 1
+        button.layer.cornerRadius = 4
+        button.layer.masksToBounds = true
+        button.addTarget(self, action: #selector(onRawImageButtonTap), for: .touchUpInside)
+        return button
+    }()
     
     /// 计算contentSize应处于的中心位置
     fileprivate var centerOfContentSize: CGPoint {
@@ -120,6 +139,11 @@ public class PhotoBrowserCell: UICollectionViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        doLayout()
+    }
+    
     /// 布局
     private func doLayout() {
         scrollView.frame = contentView.bounds
@@ -127,18 +151,53 @@ public class PhotoBrowserCell: UICollectionViewCell {
         imageView.frame = fitFrame
         scrollView.setZoomScale(1.0, animated: false)
         progressView.center = CGPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
+        // 查看原图按钮
+        if rawImageButton.isHidden == false {
+            contentView.addSubview(rawImageButton)
+            rawImageButton.sizeToFit()
+            rawImageButton.bounds.size.width += 14
+            rawImageButton.center = CGPoint(x: contentView.bounds.midX, y: contentView.bounds.height - 20 - rawImageButton.bounds.height)
+            rawImageButton.isHidden = false
+        }
     }
     
     /// 设置图片。image为placeholder图片，url为网络图片
-    public func setImage(_ image: UIImage?, url: URL?) {
+    public func setImage(_ image: UIImage?, highQualityUrl: URL?, rawUrl: URL?) {
+        // 查看原图按钮
+        rawImageButton.isHidden = (rawUrl == nil)
+        self.rawUrl = rawUrl
+        
+        // 取placeholder图像，默认使用传入的缩略图
+        var placeholder = image
+        // 若已有原图缓存，优先使用原图
+        // 次之使用高清图
+        var url = highQualityUrl
+        if let cacheImage = imageFor(url: rawUrl) {
+            placeholder = cacheImage
+            url = rawUrl
+            rawImageButton.isHidden = true
+        } else if let cacheImage = imageFor(url: highQualityUrl) {
+            placeholder = cacheImage
+        }
+        // 处理只配置了原图而不配置高清图的情况。此时使用原图代替高清图作为下载url
+        if url == nil {
+            url = rawUrl
+        }
         guard url != nil else {
             imageView.image = image
             doLayout()
             return
         }
+        loadImage(withPlaceholder: placeholder, url: url)
+        self.doLayout()
+    }
+    
+    /// 加载图片
+    private func loadImage(withPlaceholder placeholder: UIImage?, url: URL?) {
         self.progressView.isHidden = false
         weak var weakSelf = self
-        imageView.sd_setImage(with: url, placeholderImage: image, progress: { (receivedSize, totalSize, _) in
+
+        imageView.sd_setImage(with: url, placeholderImage: placeholder, progress: { (receivedSize, totalSize, _) in
             if totalSize > 0 {
                 weakSelf?.progressView.progress = CGFloat(receivedSize) / CGFloat(totalSize)
             }
@@ -146,15 +205,26 @@ public class PhotoBrowserCell: UICollectionViewCell {
             weakSelf?.progressView.isHidden = true
             weakSelf?.doLayout()
         }
-        self.doLayout()
     }
     
+    /// 根据url从缓存取图像
+    private func imageFor(url: URL?) -> UIImage? {
+        guard let url = url else {
+            return nil
+        }
+        var cacheImage: UIImage?
+        cacheImage = SDImageCache.shared().imageFromCache(forKey: SDWebImageManager.shared().cacheKey(for: url))
+        return cacheImage
+    }
+    
+    /// 响应单击
     func onSingleTap() {
         if let dlg = photoBrowserCellDelegate {
             dlg.photoBrowserCellDidSingleTap(self)
         }
     }
     
+    /// 响应双击
     func onDoubleTap(_ dbTap: UITapGestureRecognizer) {
         // 如果当前没有任何缩放，则放大到目标比例
         // 否则重置到原比例
@@ -171,6 +241,7 @@ public class PhotoBrowserCell: UICollectionViewCell {
         }
     }
     
+    /// 响应拖动
     func onPan(_ pan: UIPanGestureRecognizer) {
         switch pan.state {
         case .began:
@@ -232,10 +303,17 @@ public class PhotoBrowserCell: UICollectionViewCell {
         }
     }
     
+    /// 响应长按
     func onLongPress(_ press: UILongPressGestureRecognizer) {
         if press.state == .began, let dlg = photoBrowserCellDelegate, let image = imageView.image {
             dlg.photoBrowserCell(self, didLongPressWith: image)
         }
+    }
+    
+    /// 响应查看原图按钮
+    func onRawImageButtonTap() {
+        loadImage(withPlaceholder: imageView.image, url: rawUrl)
+        rawImageButton.isHidden = true
     }
 }
 

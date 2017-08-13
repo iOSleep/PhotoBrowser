@@ -1,9 +1,47 @@
 # JXPhotoBrowser
 ![](https://img.shields.io/badge/platform-ios-lightgrey.svg)
 ![](https://img.shields.io/badge/swift-3.0-green.svg)
-![](https://img.shields.io/badge/pod-v0.2.6-green.svg)
+![](https://img.shields.io/badge/pod-v0.3.2-blue.svg)
 
-#  缘起
+# Requirements
+- iOS 8.0+
+- Swift 3.0+
+- Xcode 8.1+
+
+# Installation with CocoaPods
+```
+pod 'JXPhotoBrowser'
+```
+
+# Usage
+```swift
+// 创建实例，传入present发起者，和delegate实现者
+let browser = PhotoBrowser(showByViewController: self, delegate: self)
+// 显示，并指定打开第几张图
+browser.show(index: 3)
+
+// 作为delegate必须实现的协议方法
+/// 图片总数
+func numberOfPhotos(in photoBrowser: PhotoBrowser) -> Int {
+    return thumbnailImageUrls.count
+}
+/// 缩放起始视图
+func photoBrowser(_ photoBrowser: PhotoBrowser, thumbnailViewForIndex index: Int) -> UIView? {
+    return collectionView?.cellForItem(at: IndexPath(item: index, section: 0))
+}
+/// 图片加载前的placeholder
+func photoBrowser(_ photoBrowser: PhotoBrowser, thumbnailImageForIndex index: Int) -> UIImage? {
+    let cell = collectionView?.cellForItem(at: IndexPath(item: index, section: 0)) as? MomentsPhotoCollectionViewCell
+    // 取thumbnailImage
+    return cell?.imageView.image
+}
+/// 高清图
+func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityUrlForIndex index: Int) -> URL? {
+    return URL(string: highQualityImageUrls[index])
+}
+```
+
+# 缘起
 那时，我想要一个这样的图片浏览器：
 - 从小图进入大图浏览时，使用转场动画
 - 可加载网络图片，且过渡自然，不阻塞操作
@@ -14,11 +52,6 @@
 ![PhotoBrowser.png](http://upload-images.jianshu.io/upload_images/2419179-9cc2a64dba3c237f.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/320)
 
 很遗憾，久寻无果，于是我决定自己造一个。
-
-# Requirements
-- iOS 8.0+
-- Swift 3.0+
-- Xcode 8.1+
 
 # 调起方式
 由于我们打算使用转场动画，所以在容器的选择上，只能使用UIViewController，那就让我们的类继承它吧：
@@ -97,7 +130,7 @@ public func show(index: Int) {
     presentingVC.present(self, animated: true, completion: nil)
 }
 ```
-# 让用户傻瓜式操作！
+# 简化使用
 现在我们调起图片浏览器的姿势是这样的：
 ```swift
 let browser = PhotoBrowser(showByViewController: self, , delegate: self)

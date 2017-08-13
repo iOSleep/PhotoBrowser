@@ -10,7 +10,7 @@ import UIKit
 import SDWebImage
 
 // MARK: - PhotoBrowserDelegate
-public protocol PhotoBrowserDelegate {
+public protocol PhotoBrowserDelegate: class {
     /// 实现本方法以返回图片数量
     func numberOfPhotos(in photoBrowser: PhotoBrowser) -> Int
     
@@ -21,11 +21,11 @@ public protocol PhotoBrowserDelegate {
     /// 比如你可返回ImageView，或整个Cell
     func photoBrowser(_ photoBrowser: PhotoBrowser, thumbnailViewForIndex index: Int) -> UIView?
     
-    /// 实现本方法以返回高质量图片。可选
-    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityImageForIndex index: Int) -> UIImage?
-    
     /// 实现本方法以返回高质量图片的url。可选
-    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityUrlStringForIndex index: Int) -> URL?
+    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityUrlForIndex index: Int) -> URL?
+    
+    /// 实现本方法以返回原图url。可选
+    func photoBrowser(_ photoBrowser: PhotoBrowser, rawUrlForIndex index: Int) -> URL?
     
     /// 长按时回调。可选
     func photoBrowser(_ photoBrowser: PhotoBrowser, didLongPressForIndex index: Int, image: UIImage)
@@ -33,11 +33,11 @@ public protocol PhotoBrowserDelegate {
 
 /// PhotoBrowserDelegate适配器
 public extension PhotoBrowserDelegate {
-    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityImageForIndex: Int) -> UIImage? {
+    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityUrlForIndex: Int) -> URL? {
         return nil
     }
     
-    func photoBrowser(_ photoBrowser: PhotoBrowser, highQualityUrlStringForIndex: Int) -> URL? {
+    func photoBrowser(_ photoBrowser: PhotoBrowser, rawUrlForIndex index: Int) -> URL? {
         return nil
     }
     
@@ -49,7 +49,7 @@ public extension PhotoBrowserDelegate {
 }
 
 // MARK: - PhotoBrowserPageControl
-public protocol PhotoBrowserPageControlDelegate {
+public protocol PhotoBrowserPageControlDelegate: class {
     
     /// 取PageControl，只会取一次
     func pageControlOfPhotoBrowser(_ photoBrowser: PhotoBrowser) -> UIView
@@ -70,10 +70,10 @@ public class PhotoBrowser: UIViewController {
     
     // MARK: -  公开属性
     /// 实现了PhotoBrowserDelegate协议的对象
-    public var photoBrowserDelegate: PhotoBrowserDelegate
+    public weak var photoBrowserDelegate: PhotoBrowserDelegate?
     
     /// 实现了PhotoBrowserPageControlDelegate协议的对象
-    public var pageControlDelegate: PhotoBrowserPageControlDelegate?
+    public weak var pageControlDelegate: PhotoBrowserPageControlDelegate?
     
     /// 左右两张图之间的间隙
     public var photoSpacing: CGFloat = 30
@@ -101,7 +101,7 @@ public class PhotoBrowser: UIViewController {
     
     /// 当前正在显示视图的前一个页面关联视图
     fileprivate var relatedView: UIView? {
-        return photoBrowserDelegate.photoBrowser(self, thumbnailViewForIndex: currentIndex)
+        return photoBrowserDelegate?.photoBrowser(self, thumbnailViewForIndex: currentIndex)
     }
     
     /// 转场协调器
@@ -147,6 +147,12 @@ public class PhotoBrowser: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
     
+    deinit {
+        #if DEBUG
+            print("deinit:\(self)")
+        #endif
+    }
+    
     /// 展示，传入图片序号，从0开始
     public func show(index: Int) {
         currentIndex = index
@@ -165,13 +171,14 @@ public class PhotoBrowser: UIViewController {
     // MARK: - 内部方法
     public override func viewDidLoad() {
         super.viewDidLoad()
+        
         // flowLayout
         flowLayout.minimumLineSpacing = photoSpacing
         flowLayout.itemSize = view.bounds.size
         
         // collectionView
         collectionView.frame = view.bounds
-        collectionView.backgroundColor = UIColor.clear
+        collectionView.backgroundColor = UIColor.black
         collectionView.decelerationRate = UIScrollViewDecelerationRateFast
         collectionView.showsVerticalScrollIndicator = false
         collectionView.showsHorizontalScrollIndicator = false
@@ -215,9 +222,11 @@ public class PhotoBrowser: UIViewController {
         dlg.photoBrowserPageControl(self.pageControl!, needLayoutIn: view)
     }
     
-    /// 禁止旋转
-    public override var shouldAutorotate: Bool {
-        return false
+    public override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        // 适配屏幕旋转
+        collectionView.frame = view.bounds
+        flowLayout.itemSize = view.bounds.size
     }
     
     /// 遮盖状态栏。以改变windowLevel的方式遮盖
@@ -246,37 +255,34 @@ public class PhotoBrowser: UIViewController {
 
 extension PhotoBrowser: UICollectionViewDataSource {
     public func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-        return self.photoBrowserDelegate.numberOfPhotos(in: self)
+        guard let delegate = photoBrowserDelegate else {
+            return 0
+        }
+        return delegate.numberOfPhotos(in: self)
     }
     
     public func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: NSStringFromClass(PhotoBrowserCell.self), for: indexPath) as! PhotoBrowserCell
         cell.imageView.contentMode = imageScaleMode
         cell.photoBrowserCellDelegate = self
-        let (image, url) = imageFor(index: indexPath.item)
-        cell.setImage(image, url: url)
+        let (image, highQualityUrl, rawUrl) = imageFor(index: indexPath.item)
+        cell.setImage(image, highQualityUrl: highQualityUrl, rawUrl: rawUrl)
         cell.imageMaximumZoomScale = imageMaximumZoomScale
         cell.imageZoomScaleForDoubleTap = imageZoomScaleForDoubleTap
         return cell
     }
     
-    /// 取已有图像，若有高清图缓存，只取出高清图以作为placeholder
-    private func imageFor(index: Int) -> (UIImage?, URL?) {
-        if let highQualityImage = photoBrowserDelegate.photoBrowser(self, highQualityImageForIndex: index) {
-            return (highQualityImage, nil)
+    private func imageFor(index: Int) -> (UIImage?, highQualityUrl: URL?, rawUrl: URL?) {
+        guard let delegate = photoBrowserDelegate else {
+            return (nil, nil, nil)
         }
-        var highQualityUrl: URL?
-        if let url = photoBrowserDelegate.photoBrowser(self, highQualityUrlStringForIndex: index) {
-            // 取高清图缓存
-            var cacheImage: UIImage?
-            cacheImage = SDWebImageManager.shared().imageCache?.imageFromCache(forKey: SDWebImageManager.shared().cacheKey(for: url))
-            if cacheImage != nil {
-                return (cacheImage!, url)
-            }
-            highQualityUrl = url
-        }
-        let thumbnailImage = photoBrowserDelegate.photoBrowser(self, thumbnailImageForIndex: index)
-        return (thumbnailImage, highQualityUrl)
+        // 缩略图
+        let thumbnailImage = delegate.photoBrowser(self, thumbnailImageForIndex: index)
+        // 高清图url
+        let highQualityUrl = delegate.photoBrowser(self, highQualityUrlForIndex: index)
+        // 原图url
+        let rawUrl = delegate.photoBrowser(self, rawUrlForIndex: index)
+        return (thumbnailImage, highQualityUrl, rawUrl)
     }
 }
 
@@ -337,7 +343,7 @@ extension PhotoBrowser: PhotoBrowserCellDelegate {
     
     public func photoBrowserCell(_ cell: PhotoBrowserCell, didLongPressWith image: UIImage) {
         if let indexPath = collectionView.indexPath(for: cell) {
-            photoBrowserDelegate.photoBrowser(self, didLongPressForIndex: indexPath.item, image: image)
+            photoBrowserDelegate?.photoBrowser(self, didLongPressForIndex: indexPath.item, image: image)
         }
     }
 }
